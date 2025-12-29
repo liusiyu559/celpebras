@@ -2,17 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TaskType, Exercise, DailySentence, UserProfile } from "./types";
 
-// 获取 AI 实例的辅助函数
-const getAI = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.warn("API_KEY is missing. Ensure it is set in environment variables.");
-  }
-  return new GoogleGenAI({ apiKey: apiKey || "" });
-};
-
 export async function generateDailySentence(profile: UserProfile): Promise<DailySentence> {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Gere um padrão de escrita avançado em português para o Celpe-Bras. Nível: ${profile.targetLevel}. Forneça: 
@@ -52,7 +43,7 @@ export async function generateDailySentence(profile: UserProfile): Promise<Daily
 }
 
 export async function generateExercises(task: { type: TaskType, title: string }, profile: UserProfile): Promise<Exercise[]> {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   const prompt = `Gere exatamente 5 exercícios para a tarefa "${task.title}" (${task.type}) do Celpe-Bras. 
   Nível: ${profile.targetLevel}.
   OBRIGATÓRIO: Todos os exercícios DEVEM ser do tipo 'choice' (múltipla escolha) com 4 opções.
@@ -86,7 +77,7 @@ export async function generateExercises(task: { type: TaskType, title: string },
 }
 
 export async function generatePlanFromAI(profile: UserProfile) {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   const prompt = `Com base em: "${profile.personalDescription}", sugira meta semanal e estágio para Celpe-Bras.
   Nível: ${profile.targetLevel}. 
   Responda em JSON bilíngue (Português/Chinês).`;
