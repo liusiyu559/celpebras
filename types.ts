@@ -29,6 +29,13 @@ export interface Task {
   userAnswers?: Record<number, string>; // Saved for history
 }
 
+export interface WeeklyGoals {
+  vocabulary: string;
+  grammar: string;
+  skills: string;
+  habits: string;
+}
+
 export interface UserProfile {
   name: string;
   avatar?: string;
@@ -36,7 +43,7 @@ export interface UserProfile {
   dailyTime: number; 
   examDate: string;
   currentStage: string;
-  weeklyGoal: string;
+  weeklyGoals: WeeklyGoals;
   personalDescription: string;
 }
 

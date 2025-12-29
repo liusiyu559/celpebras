@@ -78,9 +78,9 @@ export async function generateExercises(task: { type: TaskType, title: string },
 
 export async function generatePlanFromAI(profile: UserProfile) {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  const prompt = `Com base em: "${profile.personalDescription}", sugira meta semanal e estágio para Celpe-Bras.
+  const prompt = `Com base em: "${profile.personalDescription}", sugira metas semanais divididas em 4 partes para Celpe-Bras.
   Nível: ${profile.targetLevel}. 
-  Responda em JSON bilíngue (Português/Chinês).`;
+  Responda em JSON bilíngue (Português/Chinês) com campos: vocabulary, grammar, skills, habits.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -91,9 +91,18 @@ export async function generatePlanFromAI(profile: UserProfile) {
         type: Type.OBJECT,
         properties: {
           suggestedStage: { type: Type.STRING },
-          suggestedGoal: { type: Type.STRING }
+          weeklyGoals: {
+            type: Type.OBJECT,
+            properties: {
+              vocabulary: { type: Type.STRING },
+              grammar: { type: Type.STRING },
+              skills: { type: Type.STRING },
+              habits: { type: Type.STRING }
+            },
+            required: ["vocabulary", "grammar", "skills", "habits"]
+          }
         },
-        required: ["suggestedStage", "suggestedGoal"]
+        required: ["suggestedStage", "weeklyGoals"]
       }
     }
   });

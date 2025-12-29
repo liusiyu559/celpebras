@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Task, TaskType, UserProfile, DailySentence, Exercise } from './types';
+import { Task, TaskType, UserProfile, DailySentence, Exercise, WeeklyGoals } from './types';
 import { generateDailySentence, generateExercises, generatePlanFromAI } from './geminiService';
 import DailySentenceCard from './components/DailySentenceCard';
 import ExerciseModal from './components/ExerciseModal';
@@ -32,7 +32,12 @@ const INITIAL_PROFILE: UserProfile = {
   dailyTime: 180,
   examDate: EXAM_DATE,
   currentStage: getStageForDate(new Date().toISOString().split('T')[0]).stage,
-  weeklyGoal: 'Consolidar tempos do passado / 巩固过去时态',
+  weeklyGoals: {
+    vocabulary: 'Vocabulário social e político / 社会与政治词汇',
+    grammar: 'Usos do Pretérito Imperfeito / 过去未完成时的用法',
+    skills: 'Praticar compreensão de áudio rápido / 练习快速音频理解',
+    habits: 'Ouvir 15min de notícias diariamente / 每天听15分钟新闻'
+  },
   personalDescription: ''
 };
 
@@ -51,8 +56,8 @@ const App: React.FC = () => {
   const [isExerciseLoading, setIsExerciseLoading] = useState(false);
   const [reviewMode, setReviewMode] = useState<{tasks: Task, answers?: Record<number, string>} | null>(null);
 
-  const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [tempGoal, setTempGoal] = useState("");
+  const [isEditingGoals, setIsEditingGoals] = useState(false);
+  const [tempGoals, setTempGoals] = useState<WeeklyGoals>(INITIAL_PROFILE.weeklyGoals);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
 
@@ -60,8 +65,16 @@ const App: React.FC = () => {
   const calendarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedProfile = localStorage.getItem('celpe_profile_v6');
-    if (savedProfile) setProfile(JSON.parse(savedProfile));
+    const savedProfile = localStorage.getItem('celpe_profile_v7');
+    if (savedProfile) {
+      const parsed = JSON.parse(savedProfile);
+      // Data migration check for old single weeklyGoal
+      if (typeof parsed.weeklyGoal === 'string') {
+        parsed.weeklyGoals = INITIAL_PROFILE.weeklyGoals;
+        delete parsed.weeklyGoal;
+      }
+      setProfile(parsed);
+    }
 
     const savedTasks = localStorage.getItem('celpe_all_tasks_v4');
     if (savedTasks) {
@@ -72,7 +85,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('celpe_all_tasks_v4', JSON.stringify(allTasks));
-    localStorage.setItem('celpe_profile_v6', JSON.stringify(profile));
+    localStorage.setItem('celpe_profile_v7', JSON.stringify(profile));
   }, [allTasks, profile]);
 
   const generateSeedTasks = (date: string): Task[] => {
@@ -110,7 +123,6 @@ const App: React.FC = () => {
   }, [selectedDate, allTasks]);
 
   const totalProgressPercent = useMemo(() => {
-    // Explicitly cast Object.values to Task[][] to fix 'unknown' type error on line 114 and arithmetic error on line 117
     const completedTasksCount = (Object.values(allTasks) as Task[][]).reduce(
       (count: number, tasks: Task[]) => count + tasks.filter((t: Task) => t.isCompleted).length,
       0
@@ -184,9 +196,9 @@ const App: React.FC = () => {
     }));
   };
 
-  const saveWeeklyGoal = () => {
-    setProfile(prev => ({ ...prev, weeklyGoal: tempGoal }));
-    setIsEditingGoal(false);
+  const saveWeeklyGoals = () => {
+    setProfile(prev => ({ ...prev, weeklyGoals: tempGoals }));
+    setIsEditingGoals(false);
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,7 +298,6 @@ const App: React.FC = () => {
               />
             </section>
             
-            {/* Quick Records summary or empty space instead of weekly goal */}
             <div className="bg-white p-6 rounded-[2rem] border border-blue-50 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Resumo de Atividade</h3>
@@ -400,16 +411,49 @@ const App: React.FC = () => {
                </div>
             </section>
 
+            {/* Enhanced Weekly Goals Section */}
             <div 
-              onClick={() => { setTempGoal(profile.weeklyGoal); setIsEditingGoal(true); }}
-              className="bg-blue-600 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden cursor-pointer active:scale-[0.99] transition-all hover:bg-blue-700"
+              onClick={() => { setTempGoals(profile.weeklyGoals); setIsEditingGoals(true); }}
+              className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-blue-50 cursor-pointer active:scale-[0.99] transition-all hover:border-blue-200"
             >
-               <div className="absolute bottom-0 right-0 p-4 opacity-10 text-6xl">✨</div>
-               <div className="flex justify-between items-start mb-2">
-                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest">Meta Semanal / 每周目标</p>
-                 <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-bold">EDITAR</span>
+               <div className="flex justify-between items-center mb-6">
+                 <div>
+                    <h3 className="text-xl font-fun font-bold text-slate-800">Meta Semanal / 每周目标</h3>
+                    <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-0.5">Foco de 4 Dimensões</p>
+                 </div>
+                 <span className="text-[9px] bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold uppercase">Editar</span>
                </div>
-               <p className="font-bold text-lg leading-relaxed">{profile.weeklyGoal}</p>
+               
+               <div className="grid grid-cols-1 gap-3">
+                  <div className="flex items-start gap-4 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 transition-all group-hover:bg-white">
+                    <span className="shrink-0 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-lg">🔤</span>
+                    <div>
+                      <h4 className="text-[10px] font-black text-blue-600 uppercase mb-1">Vocabulário / 词汇</h4>
+                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.vocabulary}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-4 p-4 bg-purple-50/50 rounded-2xl border border-purple-100">
+                    <span className="shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center text-lg">✍️</span>
+                    <div>
+                      <h4 className="text-[10px] font-black text-purple-600 uppercase mb-1">Gramática / 语法</h4>
+                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.grammar}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-4 p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
+                    <span className="shrink-0 w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center text-lg">🗣️</span>
+                    <div>
+                      <h4 className="text-[10px] font-black text-orange-600 uppercase mb-1">Habilidades / 听说读写</h4>
+                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.skills}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-4 p-4 bg-green-50/50 rounded-2xl border border-green-100">
+                    <span className="shrink-0 w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center text-lg">✨</span>
+                    <div>
+                      <h4 className="text-[10px] font-black text-green-600 uppercase mb-1">Hábitos / 习惯养成</h4>
+                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.habits}</p>
+                    </div>
+                  </div>
+               </div>
             </div>
           </div>
         )}
@@ -462,20 +506,54 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {isEditingGoal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-xl font-fun font-bold text-slate-800 mb-4">Meta da Semana / 每周目标</h3>
-            <textarea 
-              autoFocus
-              className="w-full h-32 p-4 bg-blue-50 rounded-2xl mb-6 text-sm font-bold text-slate-700 outline-none focus:ring-4 ring-blue-100 transition-all shadow-inner"
-              value={tempGoal}
-              onChange={(e) => setTempGoal(e.target.value)}
-              placeholder="Qual sua meta para esta semana?"
-            />
+      {/* Enhanced Multi-Part Goal Editor Modal */}
+      {isEditingGoals && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <h3 className="text-xl font-fun font-bold text-slate-800 mb-6">Meta da Semana / 每周目标</h3>
+            
+            <div className="space-y-5 mb-8">
+              <div>
+                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 block">🔤 Vocabulário / 词汇</label>
+                <textarea 
+                  className="w-full p-3 bg-blue-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-blue-400"
+                  value={tempGoals.vocabulary}
+                  onChange={(e) => setTempGoals({...tempGoals, vocabulary: e.target.value})}
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-2 block">✍️ Gramática / 语法</label>
+                <textarea 
+                  className="w-full p-3 bg-purple-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-purple-400"
+                  value={tempGoals.grammar}
+                  onChange={(e) => setTempGoals({...tempGoals, grammar: e.target.value})}
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2 block">🗣️ Habilidades / 听说读写</label>
+                <textarea 
+                  className="w-full p-3 bg-orange-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-orange-400"
+                  value={tempGoals.skills}
+                  onChange={(e) => setTempGoals({...tempGoals, skills: e.target.value})}
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-2 block">✨ Hábitos / 习惯养成</label>
+                <textarea 
+                  className="w-full p-3 bg-green-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-green-400"
+                  value={tempGoals.habits}
+                  onChange={(e) => setTempGoals({...tempGoals, habits: e.target.value})}
+                  rows={2}
+                />
+              </div>
+            </div>
+
             <div className="flex gap-3">
-              <button onClick={saveWeeklyGoal} className="flex-1 bg-orange-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-100 active:scale-95 transition-all">Salvar / 保存</button>
-              <button onClick={() => setIsEditingGoal(false)} className="px-6 py-4 bg-gray-100 text-slate-500 rounded-2xl font-bold active:scale-95 transition-all">Sair</button>
+              <button onClick={saveWeeklyGoals} className="flex-1 bg-orange-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-orange-100 active:scale-95 transition-all">Salvar / 保存</button>
+              <button onClick={() => setIsEditingGoals(false)} className="px-6 py-4 bg-gray-100 text-slate-500 rounded-2xl font-bold active:scale-95 transition-all">Sair</button>
             </div>
           </div>
         </div>
