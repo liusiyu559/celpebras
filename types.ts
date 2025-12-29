@@ -53,3 +53,10 @@ export interface DailySentence {
   example: string;
   exercise: Exercise;
 }
+
+export interface DailyHistoryEntry {
+  date: string;
+  sentence: DailySentence;
+  completed: boolean;
+  userAnswers?: Record<number, string>;
+}

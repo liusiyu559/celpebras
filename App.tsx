@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Task, TaskType, UserProfile, DailySentence, Exercise, WeeklyGoals } from './types';
+import { Task, TaskType, UserProfile, DailySentence, Exercise, WeeklyGoals, DailyHistoryEntry } from './types';
 import { generateDailySentence, generateExercises, generatePlanFromAI } from './geminiService';
 import DailySentenceCard from './components/DailySentenceCard';
 import ExerciseModal from './components/ExerciseModal';
@@ -42,9 +42,10 @@ const INITIAL_PROFILE: UserProfile = {
 };
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'study' | 'plan' | 'profile'>('study');
+  const [activeTab, setActiveTab] = useState<'study' | 'plan' | 'history' | 'profile'>('study');
   const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
   const [allTasks, setAllTasks] = useState<Record<string, Task[]>>({});
+  const [history, setHistory] = useState<Record<string, DailyHistoryEntry>>({});
   const [dailySentence, setDailySentence] = useState<DailySentence | null>(null);
   const [loadingDaily, setLoadingDaily] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
@@ -54,7 +55,7 @@ const App: React.FC = () => {
   const [exerciseTitle, setExerciseTitle] = useState("");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isExerciseLoading, setIsExerciseLoading] = useState(false);
-  const [reviewMode, setReviewMode] = useState<{tasks: Task, answers?: Record<number, string>} | null>(null);
+  const [reviewMode, setReviewMode] = useState<{tasks: {exercises: Exercise[], title: string}, answers?: Record<number, string>} | null>(null);
 
   const [isEditingGoals, setIsEditingGoals] = useState(false);
   const [tempGoals, setTempGoals] = useState<WeeklyGoals>(INITIAL_PROFILE.weeklyGoals);
@@ -68,7 +69,6 @@ const App: React.FC = () => {
     const savedProfile = localStorage.getItem('celpe_profile_v7');
     if (savedProfile) {
       const parsed = JSON.parse(savedProfile);
-      // Data migration check for old single weeklyGoal
       if (typeof parsed.weeklyGoal === 'string') {
         parsed.weeklyGoals = INITIAL_PROFILE.weeklyGoals;
         delete parsed.weeklyGoal;
@@ -77,16 +77,99 @@ const App: React.FC = () => {
     }
 
     const savedTasks = localStorage.getItem('celpe_all_tasks_v4');
-    if (savedTasks) {
-      setAllTasks(JSON.parse(savedTasks));
-    }
+    if (savedTasks) setAllTasks(JSON.parse(savedTasks));
+
+    const savedHistory = localStorage.getItem('celpe_history_v2');
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
+
     loadDailyContent();
   }, []);
 
   useEffect(() => {
     localStorage.setItem('celpe_all_tasks_v4', JSON.stringify(allTasks));
     localStorage.setItem('celpe_profile_v7', JSON.stringify(profile));
-  }, [allTasks, profile]);
+    localStorage.setItem('celpe_history_v2', JSON.stringify(history));
+  }, [allTasks, profile, history]);
+
+  const loadDailyContent = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    // Check if we already have today's sentence in history
+    if (history[today]) {
+      setDailySentence(history[today].sentence);
+      return;
+    }
+
+    setLoadingDaily(true);
+    try {
+      const ds = await generateDailySentence(profile);
+      setDailySentence(ds);
+      // Auto-save to history when generated
+      setHistory(prev => ({
+        ...prev,
+        [today]: {
+          date: today,
+          sentence: ds,
+          completed: false
+        }
+      }));
+    } catch (e) { console.error(e); }
+    finally { setLoadingDaily(false); }
+  };
+
+  const handleTaskClick = async (task: Task) => {
+    if (task.isCompleted) {
+      if (task.exercises) {
+        setReviewMode({ tasks: { exercises: task.exercises, title: task.title }, answers: task.userAnswers });
+      }
+      return;
+    }
+    setIsExerciseLoading(true);
+    setActiveTaskId(task.id);
+    setExerciseTitle(task.title);
+    try {
+      const ex = await generateExercises(task, profile);
+      setActiveExercises(ex);
+    } catch (e) { console.error(e); }
+    finally { setIsExerciseLoading(false); }
+  };
+
+  const handleDailyPracticeClick = () => {
+    if (dailySentence) {
+      setExerciseTitle("Análise de Padrão / 句型分析");
+      setActiveExercises([dailySentence.exercise]);
+      setActiveTaskId("DAILY_SENTENCE"); // Special ID for daily sentence
+    }
+  };
+
+  const completeTask = (answers: Record<number, string>) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (activeTaskId === "DAILY_SENTENCE" && dailySentence) {
+      // Update history for daily sentence
+      setHistory(prev => ({
+        ...prev,
+        [today]: {
+          ...prev[today],
+          completed: true,
+          userAnswers: answers
+        }
+      }));
+    } else if (activeTaskId) {
+      // Update normal task
+      const updatedTasks = currentTasks.map(t => 
+        t.id === activeTaskId 
+          ? { ...t, isCompleted: true, exercises: activeExercises!, userAnswers: answers } 
+          : t
+      );
+      setAllTasks(prev => ({ ...prev, [selectedDate]: updatedTasks }));
+      if (updatedTasks.every(t => t.isCompleted) && selectedDate === today) {
+        setShowCelebration(true);
+        setTimeout(() => setShowCelebration(false), 3000);
+      }
+    }
+    setActiveExercises(null);
+    setActiveTaskId(null);
+  };
 
   const generateSeedTasks = (date: string): Task[] => {
     const stageInfo = getStageForDate(date);
@@ -123,55 +206,13 @@ const App: React.FC = () => {
   }, [selectedDate, allTasks]);
 
   const totalProgressPercent = useMemo(() => {
+    // Explicitly cast Object.values to Task[][] to fix potential "unknown" type issues during reduce
     const completedTasksCount = (Object.values(allTasks) as Task[][]).reduce(
       (count: number, tasks: Task[]) => count + tasks.filter((t: Task) => t.isCompleted).length,
       0
     );
     return Math.min(100, (completedTasksCount / TOTAL_TASKS_GOAL) * 100);
   }, [allTasks]);
-
-  const loadDailyContent = async () => {
-    setLoadingDaily(true);
-    try {
-      const ds = await generateDailySentence(profile);
-      setDailySentence(ds);
-    } catch (e) { console.error(e); }
-    finally { setLoadingDaily(false); }
-  };
-
-  const handleTaskClick = async (task: Task) => {
-    if (task.isCompleted) {
-      if (task.exercises) {
-        setReviewMode({ tasks: task, answers: task.userAnswers });
-      }
-      return;
-    }
-    setIsExerciseLoading(true);
-    setActiveTaskId(task.id);
-    setExerciseTitle(task.title);
-    try {
-      const ex = await generateExercises(task, profile);
-      setActiveExercises(ex);
-    } catch (e) { console.error(e); }
-    finally { setIsExerciseLoading(false); }
-  };
-
-  const completeTask = (answers: Record<number, string>) => {
-    if (activeTaskId && activeExercises) {
-      const updatedTasks = currentTasks.map(t => 
-        t.id === activeTaskId 
-          ? { ...t, isCompleted: true, exercises: activeExercises, userAnswers: answers } 
-          : t
-      );
-      setAllTasks(prev => ({ ...prev, [selectedDate]: updatedTasks }));
-      if (updatedTasks.every(t => t.isCompleted) && selectedDate === new Date().toISOString().split('T')[0]) {
-        setShowCelebration(true);
-        setTimeout(() => setShowCelebration(false), 3000);
-      }
-    }
-    setActiveExercises(null);
-    setActiveTaskId(null);
-  };
 
   const addCustomTask = () => {
     if (!newTaskTitle.trim()) return;
@@ -224,6 +265,12 @@ const App: React.FC = () => {
     }
     return dates;
   }, []);
+
+  // Sorted history items (newest first)
+  const historyItems = useMemo(() => {
+    // Explicitly cast Object.values to DailyHistoryEntry[] to fix "Property 'date' does not exist on type 'unknown'"
+    return (Object.values(history) as DailyHistoryEntry[]).sort((a, b) => b.date.localeCompare(a.date));
+  }, [history]);
 
   return (
     <div className="min-h-screen max-w-md mx-auto bg-blue-50 relative pb-28 font-sans overflow-x-hidden">
@@ -289,13 +336,7 @@ const App: React.FC = () => {
                  <span className="w-1.5 h-6 bg-orange-400 rounded-full"></span>
                  Frase do Dia / 每日一句
               </h3>
-              <DailySentenceCard sentence={dailySentence} loading={loadingDaily} onPractice={() => {
-                  if (dailySentence) {
-                    setExerciseTitle("Análise de Padrão / 句型分析");
-                    setActiveExercises([dailySentence.exercise]);
-                  }
-                }} 
-              />
+              <DailySentenceCard sentence={dailySentence} loading={loadingDaily} onPractice={handleDailyPracticeClick} />
             </section>
             
             <div className="bg-white p-6 rounded-[2rem] border border-blue-50 shadow-sm">
@@ -411,7 +452,6 @@ const App: React.FC = () => {
                </div>
             </section>
 
-            {/* Enhanced Weekly Goals Section */}
             <div 
               onClick={() => { setTempGoals(profile.weeklyGoals); setIsEditingGoals(true); }}
               className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-blue-50 cursor-pointer active:scale-[0.99] transition-all hover:border-blue-200"
@@ -455,6 +495,53 @@ const App: React.FC = () => {
                   </div>
                </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+             <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-blue-50">
+                <h2 className="text-2xl font-fun font-bold text-slate-800 mb-2">Arquivo de Frases</h2>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Biblioteca de Padrões / 每日一句历史库</p>
+             </div>
+
+             {historyItems.length === 0 ? (
+               <div className="text-center py-20 bg-white rounded-[2.5rem] border border-dashed border-blue-200">
+                  <span className="text-5xl mb-4 block opacity-20">📜</span>
+                  <p className="text-slate-400 font-bold">Sem registros ainda.<br/>Comece sua jornada hoje!</p>
+               </div>
+             ) : (
+               <div className="space-y-4">
+                  {historyItems.map((item) => (
+                    <div 
+                      key={item.date} 
+                      onClick={() => setReviewMode({ 
+                        tasks: { exercises: [item.sentence.exercise], title: "Revisão: " + item.sentence.pattern }, 
+                        answers: item.userAnswers 
+                      })}
+                      className="bg-white p-5 rounded-[2rem] border border-blue-50 shadow-sm hover:shadow-md transition-all active:scale-[0.98] cursor-pointer group flex justify-between items-center"
+                    >
+                       <div className="flex items-start gap-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${item.completed ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'}`}>
+                             {item.completed ? '✨' : '⏳'}
+                          </div>
+                          <div>
+                             <p className="text-[10px] font-black text-slate-300 uppercase mb-1 tracking-tighter">
+                                {new Date(item.date).toLocaleDateString('pt-BR', {day: 'numeric', month: 'long', year: 'numeric'})}
+                             </p>
+                             <h4 className="text-sm font-black text-slate-800 group-hover:text-blue-600 transition-colors">{item.sentence.pattern}</h4>
+                             <p className="text-[10px] text-slate-400 line-clamp-1 mt-1">{item.sentence.meaning}</p>
+                          </div>
+                       </div>
+                       <div className="shrink-0 text-slate-200 group-hover:text-blue-400 transition-colors">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+             )}
           </div>
         )}
 
@@ -506,7 +593,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Enhanced Multi-Part Goal Editor Modal */}
+      {/* Goal Editor Modal */}
       {isEditingGoals && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -559,18 +646,23 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 backdrop-blur-xl border-t p-5 flex justify-around items-center z-40 rounded-t-[3rem] shadow-[0_-15px_50px_rgba(0,0,0,0.1)]">
-        <button onClick={() => setActiveTab('study')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'study' ? 'text-blue-600 scale-110 font-bold' : 'text-slate-300'}`}>
-          <span className="text-2xl">{activeTab === 'study' ? '🏠' : '🏚️'}</span>
-          <span className="text-[9px] font-black uppercase tracking-widest">Início / 主页</span>
+      {/* Nav with 4 tabs */}
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 backdrop-blur-xl border-t p-4 flex justify-around items-center z-40 rounded-t-[2.5rem] shadow-[0_-15px_50px_rgba(0,0,0,0.08)]">
+        <button onClick={() => setActiveTab('study')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'study' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
+          <span className="text-xl">{activeTab === 'study' ? '🏠' : '🏠'}</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">Início</span>
         </button>
-        <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'plan' ? 'text-blue-600 scale-110 font-bold' : 'text-slate-300'}`}>
-          <span className="text-2xl font-fun">{activeTab === 'plan' ? '🗓️' : '📆'}</span>
-          <span className="text-[9px] font-black uppercase tracking-widest">Plano / 计划</span>
+        <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'plan' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
+          <span className="text-xl font-fun">{activeTab === 'plan' ? '🗓️' : '🗓️'}</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">Plano</span>
         </button>
-        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'profile' ? 'text-blue-600 scale-110 font-bold' : 'text-slate-300'}`}>
-          <span className="text-2xl">👤</span>
-          <span className="text-[9px] font-black uppercase tracking-widest">Perfil / 个人</span>
+        <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'history' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
+          <span className="text-xl">{activeTab === 'history' ? '📜' : '📜'}</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">Arquivo</span>
+        </button>
+        <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'profile' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
+          <span className="text-xl">👤</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">Perfil</span>
         </button>
       </nav>
 
@@ -583,17 +675,16 @@ const App: React.FC = () => {
             </div>
           </div>
           <p className="mt-6 text-slate-800 font-fun font-bold text-lg animate-pulse">Sincronizando Rota... / 同步中...</p>
-          <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest">Processando Inteligência Artificial</p>
         </div>
       )}
 
       {activeExercises && <ExerciseModal exercises={activeExercises} title={exerciseTitle} onClose={() => setActiveExercises(null)} onComplete={completeTask} />}
-      {reviewMode && <ExerciseModal exercises={reviewMode.tasks.exercises || []} title={reviewMode.tasks.title} onClose={() => setReviewMode(null)} initialAnswers={reviewMode.answers} isReviewMode={true} />}
+      {reviewMode && <ExerciseModal exercises={reviewMode.tasks.exercises} title={reviewMode.tasks.title} onClose={() => setReviewMode(null)} initialAnswers={reviewMode.answers} isReviewMode={true} />}
       
       {showCelebration && (
         <div className="fixed inset-0 pointer-events-none z-[100] flex flex-col items-center justify-center bg-white/40 backdrop-blur-sm animate-in fade-in duration-500">
           <div className="text-[120px] animate-bounce">✨</div>
-          <h2 className="text-4xl font-fun font-bold text-orange-500 drop-shadow-lg text-center px-6">Missão Cumprida!<br/>今日达成！</h2>
+          <h2 className="text-4xl font-fun font-bold text-orange-500 drop-shadow-lg text-center px-6">Missão Cumprida!</h2>
         </div>
       )}
       

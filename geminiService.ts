@@ -3,7 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { TaskType, Exercise, DailySentence, UserProfile } from "./types";
 
 export async function generateDailySentence(profile: UserProfile): Promise<DailySentence> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  // Always use the named parameter and direct process.env.API_KEY per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Gere um padrão de escrita avançado em português para o Celpe-Bras. Nível: ${profile.targetLevel}. Forneça: 
@@ -39,11 +40,11 @@ export async function generateDailySentence(profile: UserProfile): Promise<Daily
   });
   
   if (!response.text) throw new Error("Empty response from AI");
-  return JSON.parse(response.text);
+  return JSON.parse(response.text.trim());
 }
 
 export async function generateExercises(task: { type: TaskType, title: string }, profile: UserProfile): Promise<Exercise[]> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Gere exatamente 5 exercícios para a tarefa "${task.title}" (${task.type}) do Celpe-Bras. 
   Nível: ${profile.targetLevel}.
   OBRIGATÓRIO: Todos os exercícios DEVEM ser do tipo 'choice' (múltipla escolha) com 4 opções.
@@ -73,11 +74,11 @@ export async function generateExercises(task: { type: TaskType, title: string },
   });
 
   if (!response.text) throw new Error("Empty response from AI");
-  return JSON.parse(response.text);
+  return JSON.parse(response.text.trim());
 }
 
 export async function generatePlanFromAI(profile: UserProfile) {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Com base em: "${profile.personalDescription}", sugira metas semanais divididas em 4 partes para Celpe-Bras.
   Nível: ${profile.targetLevel}. 
   Responda em JSON bilíngue (Português/Chinês) com campos: vocabulary, grammar, skills, habits.`;
@@ -108,5 +109,5 @@ export async function generatePlanFromAI(profile: UserProfile) {
   });
 
   if (!response.text) throw new Error("Empty response from AI");
-  return JSON.parse(response.text);
+  return JSON.parse(response.text.trim());
 }
