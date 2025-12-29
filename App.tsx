@@ -110,8 +110,9 @@ const App: React.FC = () => {
   }, [selectedDate, allTasks]);
 
   const totalProgressPercent = useMemo(() => {
-    const completedTasksCount = Object.values(allTasks).reduce(
-      (count, tasks) => count + tasks.filter((t: Task) => t.isCompleted).length,
+    // Explicitly cast Object.values to Task[][] to fix 'unknown' type error on line 114 and arithmetic error on line 117
+    const completedTasksCount = (Object.values(allTasks) as Task[][]).reduce(
+      (count: number, tasks: Task[]) => count + tasks.filter((t: Task) => t.isCompleted).length,
       0
     );
     return Math.min(100, (completedTasksCount / TOTAL_TASKS_GOAL) * 100);
@@ -222,7 +223,7 @@ const App: React.FC = () => {
               className="w-14 h-14 bg-white rounded-xl shadow-md border-2 border-white overflow-hidden cursor-pointer active:scale-95 transition-all shrink-0"
              >
                 {profile.avatar ? (
-                  <img src={profile.avatar} className="w-full h-full object-cover" />
+                  <img src={profile.avatar} className="w-full h-full object-cover" alt="Profile avatar" />
                 ) : (
                   <div className="w-full h-full bg-orange-500 flex items-center justify-center text-white font-black text-2xl">
                     {profile.name[0]}
@@ -293,7 +294,7 @@ const App: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                  <div className="bg-blue-50/50 p-4 rounded-2xl">
-                    <p className="text-2xl font-black text-blue-600">{Object.values(allTasks).flat().filter(t => t.isCompleted).length}</p>
+                    <p className="text-2xl font-black text-blue-600">{(Object.values(allTasks) as Task[][]).flat().filter((t: Task) => t.isCompleted).length}</p>
                     <p className="text-[9px] font-bold text-slate-400 uppercase">Total de Missões</p>
                  </div>
                  <div className="bg-orange-50/50 p-4 rounded-2xl">
@@ -421,7 +422,7 @@ const App: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()} 
                     className="w-32 h-32 mx-auto bg-white rounded-3xl overflow-hidden border-4 border-white shadow-2xl cursor-pointer hover:scale-105 transition-all"
                   >
-                     {profile.avatar ? <img src={profile.avatar} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-5xl bg-orange-100 text-orange-400 font-bold">{profile.name[0]}</div>}
+                     {profile.avatar ? <img src={profile.avatar} className="w-full h-full object-cover" alt="Profile avatar" /> : <div className="w-full h-full flex items-center justify-center text-5xl bg-orange-100 text-orange-400 font-bold">{profile.name[0]}</div>}
                   </div>
                   <div className="absolute bottom-1 right-1 bg-blue-600 text-white p-2.5 rounded-xl shadow-lg border-2 border-white cursor-pointer active:scale-90" onClick={() => fileInputRef.current?.click()}>
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
