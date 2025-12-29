@@ -38,6 +38,12 @@ const INITIAL_PROFILE: UserProfile = {
     skills: 'Praticar compreensão de áudio rápido / 练习快速音频理解',
     habits: 'Ouvir 15min de notícias diariamente / 每天听15分钟新闻'
   },
+  completedWeeklyGoals: {
+    vocabulary: false,
+    grammar: false,
+    skills: false,
+    habits: false
+  },
   personalDescription: ''
 };
 
@@ -66,12 +72,16 @@ const App: React.FC = () => {
   const calendarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedProfile = localStorage.getItem('celpe_profile_v7');
+    const savedProfile = localStorage.getItem('celpe_profile_v8');
     if (savedProfile) {
       const parsed = JSON.parse(savedProfile);
+      // Data migration for old profile structure
       if (typeof parsed.weeklyGoal === 'string') {
         parsed.weeklyGoals = INITIAL_PROFILE.weeklyGoals;
         delete parsed.weeklyGoal;
+      }
+      if (!parsed.completedWeeklyGoals) {
+        parsed.completedWeeklyGoals = INITIAL_PROFILE.completedWeeklyGoals;
       }
       setProfile(parsed);
     }
@@ -87,13 +97,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('celpe_all_tasks_v4', JSON.stringify(allTasks));
-    localStorage.setItem('celpe_profile_v7', JSON.stringify(profile));
+    localStorage.setItem('celpe_profile_v8', JSON.stringify(profile));
     localStorage.setItem('celpe_history_v2', JSON.stringify(history));
   }, [allTasks, profile, history]);
 
   const loadDailyContent = async () => {
     const today = new Date().toISOString().split('T')[0];
-    // Check if we already have today's sentence in history
     if (history[today]) {
       setDailySentence(history[today].sentence);
       return;
@@ -103,7 +112,6 @@ const App: React.FC = () => {
     try {
       const ds = await generateDailySentence(profile);
       setDailySentence(ds);
-      // Auto-save to history when generated
       setHistory(prev => ({
         ...prev,
         [today]: {
@@ -137,7 +145,7 @@ const App: React.FC = () => {
     if (dailySentence) {
       setExerciseTitle("Análise de Padrão / 句型分析");
       setActiveExercises([dailySentence.exercise]);
-      setActiveTaskId("DAILY_SENTENCE"); // Special ID for daily sentence
+      setActiveTaskId("DAILY_SENTENCE");
     }
   };
 
@@ -145,7 +153,6 @@ const App: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     
     if (activeTaskId === "DAILY_SENTENCE" && dailySentence) {
-      // Update history for daily sentence
       setHistory(prev => ({
         ...prev,
         [today]: {
@@ -155,7 +162,6 @@ const App: React.FC = () => {
         }
       }));
     } else if (activeTaskId) {
-      // Update normal task
       const updatedTasks = currentTasks.map(t => 
         t.id === activeTaskId 
           ? { ...t, isCompleted: true, exercises: activeExercises!, userAnswers: answers } 
@@ -206,7 +212,6 @@ const App: React.FC = () => {
   }, [selectedDate, allTasks]);
 
   const totalProgressPercent = useMemo(() => {
-    // Explicitly cast Object.values to Task[][] to fix potential "unknown" type issues during reduce
     const completedTasksCount = (Object.values(allTasks) as Task[][]).reduce(
       (count: number, tasks: Task[]) => count + tasks.filter((t: Task) => t.isCompleted).length,
       0
@@ -234,6 +239,17 @@ const App: React.FC = () => {
     setAllTasks(prev => ({
       ...prev,
       [selectedDate]: prev[selectedDate].filter(t => t.id !== id)
+    }));
+  };
+
+  const toggleGoalCompletion = (goalKey: keyof UserProfile['completedWeeklyGoals'], e: React.MouseEvent) => {
+    e.stopPropagation();
+    setProfile(prev => ({
+      ...prev,
+      completedWeeklyGoals: {
+        ...prev.completedWeeklyGoals,
+        [goalKey]: !prev.completedWeeklyGoals[goalKey]
+      }
     }));
   };
 
@@ -266,9 +282,7 @@ const App: React.FC = () => {
     return dates;
   }, []);
 
-  // Sorted history items (newest first)
   const historyItems = useMemo(() => {
-    // Explicitly cast Object.values to DailyHistoryEntry[] to fix "Property 'date' does not exist on type 'unknown'"
     return (Object.values(history) as DailyHistoryEntry[]).sort((a, b) => b.date.localeCompare(a.date));
   }, [history]);
 
@@ -453,46 +467,60 @@ const App: React.FC = () => {
             </section>
 
             <div 
-              onClick={() => { setTempGoals(profile.weeklyGoals); setIsEditingGoals(true); }}
-              className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-blue-50 cursor-pointer active:scale-[0.99] transition-all hover:border-blue-200"
+              className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-blue-50"
             >
                <div className="flex justify-between items-center mb-6">
                  <div>
                     <h3 className="text-xl font-fun font-bold text-slate-800">Meta Semanal / 每周目标</h3>
                     <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-0.5">Foco de 4 Dimensões</p>
                  </div>
-                 <span className="text-[9px] bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold uppercase">Editar</span>
+                 <button 
+                  onClick={() => { setTempGoals(profile.weeklyGoals); setIsEditingGoals(true); }}
+                  className="text-[9px] bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold uppercase hover:bg-blue-100 transition-colors"
+                 >
+                   Editar
+                 </button>
                </div>
                
                <div className="grid grid-cols-1 gap-3">
-                  <div className="flex items-start gap-4 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 transition-all group-hover:bg-white">
-                    <span className="shrink-0 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-lg">🔤</span>
-                    <div>
-                      <h4 className="text-[10px] font-black text-blue-600 uppercase mb-1">Vocabulário / 词汇</h4>
-                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.vocabulary}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4 p-4 bg-purple-50/50 rounded-2xl border border-purple-100">
-                    <span className="shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center text-lg">✍️</span>
-                    <div>
-                      <h4 className="text-[10px] font-black text-purple-600 uppercase mb-1">Gramática / 语法</h4>
-                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.grammar}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4 p-4 bg-orange-50/50 rounded-2xl border border-orange-100">
-                    <span className="shrink-0 w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center text-lg">🗣️</span>
-                    <div>
-                      <h4 className="text-[10px] font-black text-orange-600 uppercase mb-1">Habilidades / 听说读写</h4>
-                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.skills}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4 p-4 bg-green-50/50 rounded-2xl border border-green-100">
-                    <span className="shrink-0 w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center text-lg">✨</span>
-                    <div>
-                      <h4 className="text-[10px] font-black text-green-600 uppercase mb-1">Hábitos / 习惯养成</h4>
-                      <p className="text-sm font-bold text-slate-700 leading-tight">{profile.weeklyGoals.habits}</p>
-                    </div>
-                  </div>
+                  {[
+                    { key: 'vocabulary', label: 'Vocabulário / 词汇', icon: '🔤', color: 'blue' },
+                    { key: 'grammar', label: 'Gramática / 语法', icon: '✍️', color: 'purple' },
+                    { key: 'skills', label: 'Habilidades / 听说读写', icon: '🗣️', color: 'orange' },
+                    { key: 'habits', label: 'Hábitos / 习惯养成', icon: '✨', color: 'green' }
+                  ].map(({ key, label, icon, color }) => {
+                    const isCompleted = profile.completedWeeklyGoals[key as keyof UserProfile['completedWeeklyGoals']];
+                    return (
+                      <div 
+                        key={key} 
+                        className={`flex items-start gap-4 p-4 rounded-2xl border transition-all ${
+                          isCompleted 
+                            ? `bg-gray-50 border-gray-100 opacity-60` 
+                            : `bg-${color}-50/50 border-${color}-100`
+                        }`}
+                      >
+                        <span className={`shrink-0 w-8 h-8 bg-${color}-100 rounded-lg flex items-center justify-center text-lg`}>
+                          {icon}
+                        </span>
+                        <div className="flex-1">
+                          <h4 className={`text-[10px] font-black text-${color}-600 uppercase mb-1`}>{label}</h4>
+                          <p className={`text-sm font-bold text-slate-700 leading-tight whitespace-pre-wrap transition-all ${isCompleted ? 'line-through decoration-slate-400 text-slate-400' : ''}`}>
+                            {profile.weeklyGoals[key as keyof WeeklyGoals]}
+                          </p>
+                        </div>
+                        <button 
+                          onClick={(e) => toggleGoalCompletion(key as keyof UserProfile['completedWeeklyGoals'], e)}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0 border-2 ${
+                            isCompleted 
+                              ? 'bg-green-500 border-green-500 text-white shadow-sm shadow-green-100' 
+                              : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'
+                          }`}
+                        >
+                          {isCompleted ? '✓' : ''}
+                        </button>
+                      </div>
+                    );
+                  })}
                </div>
             </div>
           </div>
@@ -593,7 +621,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Goal Editor Modal */}
       {isEditingGoals && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -603,37 +630,41 @@ const App: React.FC = () => {
               <div>
                 <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 block">🔤 Vocabulário / 词汇</label>
                 <textarea 
-                  className="w-full p-3 bg-blue-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-blue-400"
+                  className="w-full p-4 bg-blue-50 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-blue-400 resize-none transition-all"
                   value={tempGoals.vocabulary}
                   onChange={(e) => setTempGoals({...tempGoals, vocabulary: e.target.value})}
-                  rows={2}
+                  rows={4}
+                  placeholder="Liste os temas de vocabulário..."
                 />
               </div>
               <div>
                 <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-2 block">✍️ Gramática / 语法</label>
                 <textarea 
-                  className="w-full p-3 bg-purple-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-purple-400"
+                  className="w-full p-4 bg-purple-50 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-purple-400 resize-none transition-all"
                   value={tempGoals.grammar}
                   onChange={(e) => setTempGoals({...tempGoals, grammar: e.target.value})}
-                  rows={2}
+                  rows={4}
+                  placeholder="Quais regras gramaticais focar?"
                 />
               </div>
               <div>
                 <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2 block">🗣️ Habilidades / 听说读写</label>
                 <textarea 
-                  className="w-full p-3 bg-orange-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-orange-400"
+                  className="w-full p-4 bg-orange-50 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-orange-400 resize-none transition-all"
                   value={tempGoals.skills}
                   onChange={(e) => setTempGoals({...tempGoals, skills: e.target.value})}
-                  rows={2}
+                  rows={4}
+                  placeholder="Meta para áudio, leitura ou fala..."
                 />
               </div>
               <div>
                 <label className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-2 block">✨ Hábitos / 习惯养成</label>
                 <textarea 
-                  className="w-full p-3 bg-green-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-green-400"
+                  className="w-full p-4 bg-green-50 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-green-400 resize-none transition-all"
                   value={tempGoals.habits}
                   onChange={(e) => setTempGoals({...tempGoals, habits: e.target.value})}
-                  rows={2}
+                  rows={4}
+                  placeholder="Ex: Ler 1 notícia por dia..."
                 />
               </div>
             </div>
@@ -646,18 +677,17 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Nav with 4 tabs */}
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white/95 backdrop-blur-xl border-t p-4 flex justify-around items-center z-40 rounded-t-[2.5rem] shadow-[0_-15px_50px_rgba(0,0,0,0.08)]">
         <button onClick={() => setActiveTab('study')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'study' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
-          <span className="text-xl">{activeTab === 'study' ? '🏠' : '🏠'}</span>
+          <span className="text-xl">🏠</span>
           <span className="text-[8px] font-black uppercase tracking-widest">Início</span>
         </button>
         <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'plan' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
-          <span className="text-xl font-fun">{activeTab === 'plan' ? '🗓️' : '🗓️'}</span>
+          <span className="text-xl font-fun">🗓️</span>
           <span className="text-[8px] font-black uppercase tracking-widest">Plano</span>
         </button>
         <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'history' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>
-          <span className="text-xl">{activeTab === 'history' ? '📜' : '📜'}</span>
+          <span className="text-xl">📜</span>
           <span className="text-[8px] font-black uppercase tracking-widest">Arquivo</span>
         </button>
         <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${activeTab === 'profile' ? 'text-blue-600 scale-105 font-bold' : 'text-slate-300'}`}>

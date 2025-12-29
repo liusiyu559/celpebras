@@ -44,6 +44,12 @@ export interface UserProfile {
   examDate: string;
   currentStage: string;
   weeklyGoals: WeeklyGoals;
+  completedWeeklyGoals: {
+    vocabulary: boolean;
+    grammar: boolean;
+    skills: boolean;
+    habits: boolean;
+  };
   personalDescription: string;
 }
 
