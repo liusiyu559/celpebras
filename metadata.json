@@ -1,0 +1,7 @@
+{
+  "name": "Samantha's Celpe-Bras Roadmap",
+  "description": "A personalized Portuguese proficiency exam preparation app featuring AI-driven exercises, task management, and progress tracking.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
