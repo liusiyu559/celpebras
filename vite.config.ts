@@ -5,18 +5,12 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // 确保即使 API_KEY 未设置，应用也不会因为 process.env 缺失而崩溃
+    // Vite 会在构建时将代码中的 process.env.API_KEY 替换为实际的字符串值
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || ""),
-    'process.env': process.env
   },
   build: {
     outDir: 'dist',
-    sourcemap: false,
-    rollupOptions: {
-      input: {
-        main: './index.html'
-      }
-    }
+    sourcemap: false
   },
   server: {
     port: 3000
