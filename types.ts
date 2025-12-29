@@ -2,10 +2,11 @@
 export enum TaskType {
   VOCABULARY = 'Vocabulário / 词汇',
   GRAMMAR = 'Gramática / 语法',
-  WRITING = 'Escrita / 写作',
   LISTENING = 'Audição / 听力',
   SPEAKING = 'Oralidade / 口语',
-  READING = 'Leitura / 阅读'
+  READING = 'Leitura / 阅读',
+  WRITING = 'Escrita / 写作',
+  EXAM = 'Simulados / 考试相关'
 }
 
 export interface Exercise {
